@@ -1,4 +1,4 @@
-"""Clinic AI Agent - Intelligent medical receptionist using OpenAI"""
+"""Clinic AI Agent - Intelligent medical receptionist using OpenAI compatible API"""
 
 import os
 import json
@@ -8,7 +8,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 try:
-    from openai import OpenAI, AsyncOpenAI
+    from openai import OpenAI
 except ImportError:
     print("OpenAI library not installed. Install with: pip install openai")
 
@@ -21,13 +21,10 @@ class ClinicAgent:
     """AI receptionist agent for medical clinic"""
     
     def __init__(self):
-        """Initialize the clinic agent"""
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
-        
-        self.client = OpenAI(api_key=api_key)
-        self.async_client = AsyncOpenAI(api_key=api_key)
+        """Initialize the clinic agent with LLM provider"""
+        # Determine which LLM provider to use
+        self.provider = self._determine_provider()
+        self.client = self._init_client()
         
         # Session management
         self.sessions: Dict[str, Dict[str, Any]] = {}
@@ -37,11 +34,71 @@ class ClinicAgent:
         self.reservations = self._load_reservations()
         
         # Agent configuration
-        self.model = "gpt-4o-mini"
+        self.model = self._get_model_name()
         self.temperature = 0.7
         self.max_tokens = 150
         
-        logger.info(f"🧠 Clinic Agent initialized with model: {self.model}")
+        logger.info(f"🧠 Clinic Agent initialized with provider: {self.provider}, model: {self.model}")
+    
+    def _determine_provider(self) -> str:
+        """Determine which LLM provider is configured"""
+        # Check in order of preference
+        if os.getenv("OLLAMA_BASE_URL"):
+            logger.info("✅ Using Ollama (local LLM)")
+            return "ollama"
+        elif os.getenv("GROQ_API_KEY"):
+            logger.info("✅ Using Groq API")
+            return "groq"
+        elif os.getenv("OPENAI_API_KEY"):
+            logger.info("✅ Using OpenAI API")
+            return "openai"
+        else:
+            raise ValueError(
+                "No LLM provider configured. Set one of:\n"
+                "  - OLLAMA_BASE_URL (for local Ollama)\n"
+                "  - GROQ_API_KEY (for Groq)\n"
+                "  - OPENAI_API_KEY (for OpenAI)\n\n"
+                "For local development with Ollama:\n"
+                "  1. Install: https://ollama.com/\n"
+                "  2. Run: ollama serve\n"
+                "  3. Pull model: ollama pull llama2\n"
+                "  4. Set OLLAMA_BASE_URL=http://localhost:11434/v1"
+            )
+    
+    def _init_client(self) -> OpenAI:
+        """Initialize OpenAI-compatible client for the chosen provider"""
+        if self.provider == "ollama":
+            # Ollama local setup (like your AI_Court project)
+            base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+            api_key = os.getenv("OLLAMA_API_KEY", "ollama")
+            logger.info(f"Connecting to Ollama at {base_url}")
+            return OpenAI(base_url=base_url, api_key=api_key)
+        
+        elif self.provider == "groq":
+            # Groq API
+            api_key = os.getenv("GROQ_API_KEY")
+            if not api_key:
+                raise ValueError("GROQ_API_KEY environment variable not set")
+            return OpenAI(
+                api_key=api_key,
+                base_url="https://api.groq.com/openai/v1"
+            )
+        
+        else:  # openai
+            # OpenAI standard API
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY environment variable not set")
+            return OpenAI(api_key=api_key)
+    
+    def _get_model_name(self) -> str:
+        """Get the appropriate model name for the provider"""
+        if self.provider == "ollama":
+            return os.getenv("OLLAMA_MODEL", "llama2")
+        elif self.provider == "groq":
+            return os.getenv("GROQ_MODEL", "llama-3.2-70b-versatile")
+        else:  # openai
+            return "gpt-4o-mini"
     
     def _load_services(self) -> List[Dict[str, Any]]:
         """Load available services from JSON"""
@@ -134,7 +191,7 @@ How can I assist you today?"""
             # Build system prompt
             system_prompt = self._build_system_prompt(session)
             
-            # Get response from OpenAI
+            # Get response from LLM
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -239,54 +296,6 @@ Respond naturally as a medical receptionist would in a phone conversation."""
         session_id: str
     ) -> str:
         """Async version of process_message"""
-        try:
-            # Initialize or get session
-            if session_id not in self.sessions:
-                self.sessions[session_id] = {
-                    "messages": [],
-                    "patient_name": None,
-                    "patient_dob": None,
-                    "selected_service": None,
-                    "booking_date": None,
-                    "booking_time": None,
-                }
-            
-            session = self.sessions[session_id]
-            session["messages"].append({
-                "role": "user",
-                "content": user_message
-            })
-            
-            # Build system prompt
-            system_prompt = self._build_system_prompt(session)
-            
-            # Get response from OpenAI
-            response = await self.async_client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    *session["messages"]
-                ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens
-            )
-            
-            assistant_message = response.choices[0].message.content.strip()
-            
-            # Store assistant response
-            session["messages"].append({
-                "role": "assistant",
-                "content": assistant_message
-            })
-            
-            # Limit conversation history
-            max_history = int(os.getenv("MAX_CONVERSATION_LENGTH", 50))
-            if len(session["messages"]) > max_history:
-                session["messages"] = session["messages"][-max_history:]
-            
-            logger.info(f"Agent response (async): {assistant_message}")
-            return assistant_message
-            
-        except Exception as e:
-            logger.error(f"Error processing message (async): {e}")
-            return "I apologize, I'm having technical difficulties. Please try again."
+        # For now, just call sync version
+        # In production, would use async client
+        return self.process_message(user_message, session_id)
