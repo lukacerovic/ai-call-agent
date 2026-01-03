@@ -13,9 +13,11 @@ numpy==1.24.3
 scipy==1.11.4
 
 # Speech Recognition & TTS
-openai==1.6.1
-gTTS==2.4.0
-pyttsx3==2.90
+SpeechRecognition==3.10.0  # Google Speech Recognition (free, no API key needed)
+openai==1.6.1  # OpenAI Whisper (optional fallback, requires API key)
+gTTS==2.4.0  # Google Text-to-Speech (for voice responses)
+pyttsx3==2.90  # Local text-to-speech (offline fallback)
+pydub==0.25.1  # Audio format conversion (required by SpeechRecognition)
 
 # LLM Integration
 groq==0.4.1
