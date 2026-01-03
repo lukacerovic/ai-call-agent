@@ -28,10 +28,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize components
-stt = SpeechToText()
-tts = TextToSpeech()
-vad = VoiceActivityDetector()
+# Initialize components - handle gracefully if dependencies fail
+try:
+    stt = SpeechToText()
+    logger.info("✅ STT initialized (OpenAI Whisper) - STT will be available if OPENAI_API_KEY is set")
+except Exception as e:
+    logger.warning(f"⚠️  STT initialization failed: {e}")
+    stt = SpeechToText()  # Will be disabled gracefully
+
+try:
+    tts = TextToSpeech()
+    logger.info("✅ TTS initialized (gTTS)")
+except Exception as e:
+    logger.error(f"❌ TTS initialization failed: {e}")
+    raise  # TTS is critical
+
+try:
+    vad = VoiceActivityDetector()
+    logger.info("✅ VAD initialized")
+except Exception as e:
+    logger.error(f"❌ VAD initialization failed: {e}")
+    raise  # VAD is critical
+
 clinic_agent = None
 
 
@@ -68,7 +86,7 @@ async def lifespan(app: FastAPI):
     try:
         clinic_agent = ClinicAgent()
         logger.info("✅ Clinic agent initialized")
-        logger.info("✅ STT, TTS, and VAD systems ready")
+        logger.info("✅ System ready to receive calls")
     except Exception as e:
         logger.error(f"❌ Failed to initialize agent: {e}")
         raise
@@ -206,11 +224,17 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.debug("Silence detected, listening...")
                 continue
             
-            # Speech to Text
-            user_text = await stt.transcribe(data)
+            # Speech to Text (only if available)
+            if stt.is_available:
+                user_text = await stt.transcribe(data)
+            else:
+                # Fallback: if STT not available, skip transcription
+                logger.warning("STT not available, skipping speech-to-text")
+                user_text = "[audio received but not transcribed]"
+            
             logger.info(f"👤 User: {user_text}")
             
-            if not user_text:
+            if not user_text or "[audio" in user_text:
                 continue
             
             # Check for end of call
@@ -265,6 +289,12 @@ if os.getenv("DEBUG", "False") == "True":
     async def debug_stt(file: UploadFile = File(...)):
         """Test STT conversion"""
         try:
+            if not stt.is_available:
+                raise HTTPException(
+                    status_code=503,
+                    detail="STT not available - set OPENAI_API_KEY to enable"
+                )
+            
             audio_data = await file.read()
             text = await stt.transcribe(audio_data)
             return {
