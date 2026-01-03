@@ -22,6 +22,10 @@ const CallInterface: React.FC = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const silenceCounterRef = useRef<number>(0);
+  const isRecordingRef = useRef<boolean>(false);
 
   // Auto-scroll to latest transcript
   useEffect(() => {
@@ -36,8 +40,16 @@ const CallInterface: React.FC = () => {
       }));
 
       // Request microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: false,
+          sampleRate: 16000,
+        } 
+      });
       streamRef.current = stream;
+      console.log('✅ Microphone access granted');
 
       // Initialize audio context
       if (!audioContextRef.current) {
@@ -47,31 +59,34 @@ const CallInterface: React.FC = () => {
       // Connect to WebSocket
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.hostname}:8000/ws`;
+      console.log(`📡 Connecting to WebSocket: ${wsUrl}`);
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
+        console.log('✅ WebSocket connected');
         setCallState(prev => ({
           ...prev,
           isConnected: true,
-          status: 'Listening to clinic agent...',
+          status: 'Connected. Listening to clinic agent greeting...',
         }));
-        startListening();
       };
 
       ws.onmessage = (event) => {
+        console.log(`📥 Received from backend: ${event.data.byteLength || event.data.length} bytes`);
         if (event.data instanceof Blob) {
           // Handle audio response
           playAudio(event.data);
           setCallState(prev => ({
             ...prev,
             isSpeaking: true,
+            isListening: false,
             status: 'Clinic agent speaking...',
           }));
         }
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('❌ WebSocket error:', error);
         setCallState(prev => ({
           ...prev,
           status: 'Connection error. Please try again.',
@@ -79,17 +94,19 @@ const CallInterface: React.FC = () => {
       };
 
       ws.onclose = () => {
+        console.log('🔌 WebSocket disconnected');
         setCallState(prev => ({
           ...prev,
           isConnected: false,
           isListening: false,
           status: 'Call ended',
         }));
+        stopListening();
       };
 
       websocketRef.current = ws;
     } catch (error) {
-      console.error('Error starting call:', error);
+      console.error('❌ Error starting call:', error);
       setCallState(prev => ({
         ...prev,
         status: 'Error: Microphone access denied',
@@ -98,85 +115,132 @@ const CallInterface: React.FC = () => {
   };
 
   const startListening = () => {
-    if (!streamRef.current || !websocketRef.current) return;
+    if (!streamRef.current || !websocketRef.current) {
+      console.error('❌ Stream or WebSocket not available');
+      return;
+    }
 
+    console.log('🎤 Starting voice capture...');
     setCallState(prev => ({
       ...prev,
       isListening: true,
+      status: 'Listening...',
     }));
 
     const audioContext = audioContextRef.current!;
     const source = audioContext.createMediaStreamSource(streamRef.current);
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 2048;
+    analyserRef.current = analyser;
     source.connect(analyser);
 
-    // Record audio
-    const mediaRecorder = new MediaRecorder(streamRef.current);
+    // Create MediaRecorder for continuous recording
+    const mediaRecorder = new MediaRecorder(streamRef.current, {
+      mimeType: 'audio/webm',
+    });
     mediaRecorderRef.current = mediaRecorder;
 
     let audioChunks: BlobPart[] = [];
-    let silenceCounter = 0;
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    const silenceThreshold = 30;
-    const silenceDuration = 15; // 1.5 seconds at 100ms intervals
+    silenceCounterRef.current = 0;
+    isRecordingRef.current = false;
 
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const silenceThreshold = 25; // Lower threshold for better detection
+    const silenceDurationFrames = 15; // ~1.5 seconds at 100ms intervals
+
+    // Monitor audio levels and manage recording
     const checkAudio = () => {
+      if (!callState.isConnected) {
+        console.log('📵 Call disconnected, stopping audio check');
+        return;
+      }
+
       analyser.getByteFrequencyData(dataArray);
       const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+      const isSpeechDetected = average > silenceThreshold;
 
-      if (average < silenceThreshold) {
-        silenceCounter++;
-      } else {
-        silenceCounter = 0;
-        if (!mediaRecorder.recording) {
+      if (isSpeechDetected) {
+        silenceCounterRef.current = 0;
+        // Start recording if not already recording
+        if (!isRecordingRef.current) {
+          console.log('🔴 Speech detected, starting recording');
+          audioChunks = [];
           mediaRecorder.start();
+          isRecordingRef.current = true;
+        }
+      } else {
+        // Increment silence counter
+        if (isRecordingRef.current) {
+          silenceCounterRef.current++;
+          console.log(`🔇 Silence detected (${silenceCounterRef.current}/${silenceDurationFrames})`);
         }
       }
 
-      if (silenceCounter > silenceDuration && mediaRecorder.recording) {
+      // If silence threshold reached and was recording, stop and send
+      if (silenceCounterRef.current >= silenceDurationFrames && isRecordingRef.current) {
+        console.log('⏹️ Silence duration reached, stopping recording and sending');
         mediaRecorder.stop();
-        silenceCounter = 0;
+        isRecordingRef.current = false;
+        silenceCounterRef.current = 0;
       }
 
-      if (callState.isConnected) {
-        requestAnimationFrame(checkAudio);
-      }
+      animationFrameRef.current = requestAnimationFrame(checkAudio);
     };
 
     mediaRecorder.ondataavailable = (event) => {
-      audioChunks.push(event.data);
-    };
-
-    mediaRecorder.onstop = () => {
-      const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-      audioChunks = [];
-
-      // Send audio to backend
-      if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
-        websocketRef.current.send(audioBlob);
-        // Transcribe locally for display
-        transcribeAudio(audioBlob);
+      if (event.data.size > 0) {
+        console.log(`📝 Audio chunk received: ${event.data.size} bytes`);
+        audioChunks.push(event.data);
       }
     };
 
+    mediaRecorder.onstop = () => {
+      if (audioChunks.length > 0) {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        console.log(`📦 Compiled audio blob: ${audioBlob.size} bytes`);
+
+        // Send audio to backend
+        if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
+          console.log(`📤 Sending audio to backend: ${audioBlob.size} bytes`);
+          websocketRef.current.send(audioBlob);
+          
+          // Show user's speech as [Processing...]
+          setTranscripts(prev => [...prev, {
+            speaker: 'You',
+            text: '[Processing your speech...]',
+          }]);
+        } else {
+          console.error('❌ WebSocket not open, cannot send audio');
+        }
+        audioChunks = [];
+      }
+    };
+
+    // Start the audio monitoring loop
     checkAudio();
   };
 
-  const transcribeAudio = async (audioBlob: Blob) => {
-    // For demo purposes, show a placeholder
-    // In production, you'd send to backend for transcription
-    setTranscripts(prev => [...prev, {
-      speaker: 'You',
-      text: '[Listening to your speech...]',
-    }]);
+  const stopListening = () => {
+    console.log('🛑 Stopping audio capture');
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    if (mediaRecorderRef.current && isRecordingRef.current) {
+      mediaRecorderRef.current.stop();
+      isRecordingRef.current = false;
+    }
   };
 
   const playAudio = (audioBlob: Blob) => {
+    console.log(`🔊 Playing audio: ${audioBlob.size} bytes`);
     const audio = new Audio(URL.createObjectURL(audioBlob));
-    audio.play();
-
+    
+    audio.onplay = () => {
+      console.log('▶️ Audio started playing');
+    };
+    
     audio.onended = () => {
+      console.log('⏹️ Audio finished playing');
       // Resume listening after agent speaks
       if (callState.isConnected) {
         setCallState(prev => ({
@@ -187,9 +251,19 @@ const CallInterface: React.FC = () => {
         startListening();
       }
     };
+    
+    audio.onerror = (error) => {
+      console.error('❌ Audio playback error:', error);
+    };
+    
+    audio.play().catch(error => {
+      console.error('❌ Failed to play audio:', error);
+    });
   };
 
   const endCall = () => {
+    console.log('📵 Ending call');
+    stopListening();
     if (websocketRef.current) {
       websocketRef.current.close();
     }
@@ -229,7 +303,7 @@ const CallInterface: React.FC = () => {
             onClick={startCall}
             disabled={callState.isConnected}
           >
-            📞 Call Clinic
+            ☎️ Call Clinic
           </button>
         ) : (
           <button
@@ -276,10 +350,13 @@ const CallInterface: React.FC = () => {
       <div className="info-panel">
         <h4>ℹ️ How to Use</h4>
         <ul>
-          <li>Press "Call Clinic" to connect</li>
+          <li>Press "☎️ Call Clinic" to connect</li>
+          <li>Listen to the AI receptionist greeting</li>
           <li>Speak naturally into your microphone</li>
-          <li>Listen to the AI receptionist</li>
-          <li>Press "End Call" to disconnect</li>
+          <li>Pause for 2-3 seconds when done speaking (signals end of message)</li>
+          <li>Listen to the AI response</li>
+          <li>Continue the conversation naturally</li>
+          <li>Press "📵 End Call" to disconnect</li>
           <li>No text input needed - voice only!</li>
         </ul>
       </div>
