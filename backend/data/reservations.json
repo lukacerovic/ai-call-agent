@@ -1,0 +1,20 @@
+[
+  {
+    "id": "res-001",
+    "serviceId": "consultation-001",
+    "date": "2026-01-20",
+    "time": "10:00",
+    "patientName": "John Doe",
+    "patientDOB": "1990-05-20",
+    "createdAt": "2026-01-03T10:00:00"
+  },
+  {
+    "id": "res-002",
+    "serviceId": "physical-exam-001",
+    "date": "2026-01-22",
+    "time": "14:30",
+    "patientName": "Jane Smith",
+    "patientDOB": "1985-03-15",
+    "createdAt": "2026-01-03T11:00:00"
+  }
+]
