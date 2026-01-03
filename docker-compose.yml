@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-call-agent-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=llama-3.2-70b-versatile
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=False
+      - LOG_LEVEL=INFO
+      - FRONTEND_URL=http://localhost:3000
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
+    volumes:
+      - ./backend:/app/backend
+      - ./backend/data:/app/backend/data
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - ai-call-network
+    depends_on:
+      - ollama
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai-call-agent-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_WS_URL=ws://localhost:8000/ws
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    networks:
+      - ai-call-network
+    depends_on:
+      - backend
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai-call-agent-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - ai-call-network
+    # Uncomment to pull model on startup
+    # command: ollama pull llama2
+
+volumes:
+  ollama_data:
+
+networks:
+  ai-call-network:
+    driver: bridge
