@@ -1,0 +1,324 @@
+.call-interface {
+  width: 100%;
+  max-width: 600px;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.clinic-header {
+  text-align: center;
+}
+
+.clinic-header h1 {
+  font-size: 36px;
+  color: #2196F3;
+  margin-bottom: 8px;
+}
+
+.clinic-header p {
+  font-size: 14px;
+  color: #757575;
+}
+
+.call-status {
+  display: flex;
+  justify-content: center;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: #f5f5f5;
+  border-radius: 50px;
+  font-size: 14px;
+  color: #757575;
+  transition: all 0.3s ease;
+}
+
+.status-indicator.connected {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #9E9E9E;
+  animation: pulse 2s infinite;
+}
+
+.status-indicator.connected .status-dot {
+  background: #4CAF50;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.call-button-container {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+
+.call-button {
+  padding: 16px 40px;
+  font-size: 18px;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.call-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.call-btn {
+  background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+  color: white;
+}
+
+.call-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
+}
+
+.end-btn {
+  background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+  color: white;
+}
+
+.end-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(244, 67, 54, 0.4);
+}
+
+.audio-indicator {
+  min-height: 100px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.listening-animation {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.listening-animation p {
+  font-size: 14px;
+  color: #2196F3;
+  font-weight: 600;
+}
+
+.wave {
+  display: inline-block;
+  width: 8px;
+  height: 30px;
+  background: #2196F3;
+  border-radius: 4px;
+  margin: 0 3px;
+  animation: wave 0.8s infinite;
+}
+
+.wave:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.wave:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.wave:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes wave {
+  0%, 60%, 100% {
+    height: 10px;
+    transform: translateY(5px);
+  }
+  30% {
+    height: 30px;
+    transform: translateY(-5px);
+  }
+}
+
+.speaking-animation {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.speaking-animation p {
+  font-size: 14px;
+  color: #4CAF50;
+  font-weight: 600;
+}
+
+.pulse {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #4CAF50;
+  animation: pulse-grow 1.5s infinite;
+}
+
+@keyframes pulse-grow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 20px rgba(76, 175, 80, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+  }
+}
+
+.transcript-panel {
+  background: #f9f9f9;
+  border-radius: 12px;
+  padding: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.transcript-panel h3 {
+  font-size: 14px;
+  color: #212121;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.transcript-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.transcript-entry {
+  padding: 10px 12px;
+  background: white;
+  border-radius: 8px;
+  border-left: 3px solid #2196F3;
+}
+
+.transcript-entry.you {
+  border-left-color: #757575;
+  margin-left: 20px;
+}
+
+.transcript-entry strong {
+  font-size: 12px;
+  color: #2196F3;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.transcript-entry.you strong {
+  color: #757575;
+}
+
+.transcript-entry p {
+  font-size: 13px;
+  color: #212121;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.info-panel {
+  background: #E3F2FD;
+  border-radius: 12px;
+  padding: 16px;
+  border-left: 4px solid #2196F3;
+}
+
+.info-panel h4 {
+  font-size: 14px;
+  color: #1565C0;
+  margin-bottom: 12px;
+}
+
+.info-panel ul {
+  list-style: none;
+  font-size: 13px;
+  color: #455A64;
+  line-height: 1.8;
+}
+
+.info-panel li {
+  margin-bottom: 6px;
+}
+
+.info-panel li:before {
+  content: "✓ ";
+  color: #2196F3;
+  font-weight: bold;
+  margin-right: 8px;
+}
+
+/* Scrollbar styling */
+.transcript-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.transcript-panel::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.transcript-panel::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 10px;
+}
+
+.transcript-panel::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+  .call-interface {
+    max-width: 100%;
+    height: 100vh;
+    border-radius: 0;
+    padding: 20px;
+    gap: 20px;
+  }
+
+  .clinic-header h1 {
+    font-size: 28px;
+  }
+
+  .call-button {
+    padding: 14px 32px;
+    font-size: 16px;
+  }
+
+  .transcript-panel {
+    max-height: 200px;
+  }
+}
