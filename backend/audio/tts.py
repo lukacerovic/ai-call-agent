@@ -1,4 +1,4 @@
-"""Text-to-Speech module using gTTS (Google Text-to-Speech) - No API key needed"""
+"""Text-to-Speech module using pyttsx3 (local, offline TTS)"""
 
 import os
 import io
@@ -8,14 +8,14 @@ from enum import Enum
 from dotenv import load_dotenv
 
 try:
-    from gtts import gTTS
-except ImportError:
-    print("gTTS not installed. Install with: pip install gtts")
-
-try:
     import pyttsx3
 except ImportError:
     print("pyttsx3 not installed. Install with: pip install pyttsx3")
+
+try:
+    from gtts import gTTS
+except ImportError:
+    print("gTTS not installed. Install with: pip install gtts")
 
 load_dotenv()
 
@@ -33,7 +33,7 @@ class TextToSpeech:
     
     def __init__(
         self,
-        provider: str = "gtts",
+        provider: str = "pyttsx3",
         language: str = "en",
         speed: float = 1.0
     ):
@@ -43,35 +43,48 @@ class TextToSpeech:
         Args:
             provider: TTS provider ("gtts" or "pyttsx3")
                 - "gtts": Google Text-to-Speech (better quality, needs internet)
-                - "pyttsx3": Local synthesis (works offline, lower quality)
+                - "pyttsx3": Local synthesis (works offline, lower quality but reliable)
             language: Language code (e.g., "en" for English)
             speed: Speech speed (only for pyttsx3: 0.5-2.0)
         """
+        # Get provider from env, default to pyttsx3 (works offline)
         self.provider = os.getenv("TTS_PROVIDER", provider).lower()
         self.language = language
         self.speed = speed
         self.is_available = False
         self.engine = None
         
+        # If gtts is requested but fails, fallback to pyttsx3
+        if self.provider == "gtts":
+            logger.warning("⚠️  gTTS requires internet connection. If it fails, will fallback to pyttsx3 (local TTS)")
+        
         # Validate provider
         if self.provider not in ["gtts", "pyttsx3"]:
-            logger.warning(f"Unknown provider: {self.provider}, defaulting to gtts")
-            self.provider = "gtts"
+            logger.warning(f"Unknown provider: {self.provider}, defaulting to pyttsx3")
+            self.provider = "pyttsx3"
         
         # Initialize based on provider
         try:
             if self.provider == "pyttsx3":
                 self.engine = pyttsx3.init()
                 self.engine.setProperty('rate', int(150 * self.speed))  # Speed in WPM
-                logger.info(f"✅ TTS initialized with provider: pyttsx3 (local, offline)")
+                logger.info(f"✅ TTS initialized with provider: pyttsx3 (local, works offline)")
             else:  # gtts
-                logger.info(f"✅ TTS initialized with provider: gtts (Google, needs internet)")
+                logger.info(f"✅ TTS initialized with provider: gtts (needs internet)")
             
             self.is_available = True
         except Exception as e:
             logger.error(f"Error initializing TTS: {e}")
-            logger.warning("TTS will not work - check if gtts/pyttsx3 are properly installed")
-            self.is_available = False
+            logger.warning("Fallback: Using pyttsx3 (local TTS)")
+            try:
+                self.engine = pyttsx3.init()
+                self.engine.setProperty('rate', int(150 * self.speed))
+                self.provider = "pyttsx3"
+                self.is_available = True
+                logger.info(f"✅ Fallback TTS initialized: pyttsx3")
+            except:
+                logger.error("TTS completely unavailable - check if pyttsx3 is installed")
+                self.is_available = False
     
     async def synthesize(self, text: str) -> bytes:
         """
@@ -95,6 +108,10 @@ class TextToSpeech:
         
         except Exception as e:
             logger.error(f"TTS error: {e}")
+            # Fallback to pyttsx3 if gtts fails
+            if self.provider == "gtts":
+                logger.warning("gTTS failed, falling back to pyttsx3")
+                return self._synthesize_pyttsx3_sync(text)
             return b""
     
     def synthesize_sync(self, text: str) -> bytes:
@@ -119,6 +136,10 @@ class TextToSpeech:
         
         except Exception as e:
             logger.error(f"TTS error: {e}")
+            # Fallback to pyttsx3 if gtts fails
+            if self.provider == "gtts":
+                logger.warning("gTTS failed, falling back to pyttsx3")
+                return self._synthesize_pyttsx3_sync(text)
             return b""
     
     def _synthesize_gtts_sync(self, text: str) -> bytes:
@@ -149,6 +170,7 @@ class TextToSpeech:
         
         except Exception as e:
             logger.error(f"gTTS error: {e}")
+            logger.warning("gTTS failed - will fallback to pyttsx3")
             return b""
     
     def _synthesize_pyttsx3_sync(self, text: str) -> bytes:
@@ -180,7 +202,7 @@ class TextToSpeech:
                 with open(temp_path, "rb") as f:
                     audio_data = f.read()
                 
-                logger.debug(f"pyttsx3 synthesized {len(text)} characters")
+                logger.debug(f"pyttsx3 synthesized {len(text)} characters to {len(audio_data)} bytes")
                 return audio_data
             
             finally:
