@@ -1,0 +1,72 @@
+[
+  {
+    "id": "consultation-001",
+    "name": "Initial Consultation",
+    "durationMinutes": 30,
+    "price": 50,
+    "description": "Meet with our healthcare provider for a comprehensive health assessment",
+    "whatIsIncluded": "Medical history review, vital signs check, initial diagnosis discussion",
+    "howItsDone": "In-person at clinic",
+    "specialPreparation": null
+  },
+  {
+    "id": "follow-up-001",
+    "name": "Follow-up Visit",
+    "durationMinutes": 20,
+    "price": 35,
+    "description": "Return visit to monitor progress and adjust treatment",
+    "whatIsIncluded": "Progress assessment, vital signs, medication review",
+    "howItsDone": "In-person at clinic or telemedicine",
+    "specialPreparation": null
+  },
+  {
+    "id": "physical-exam-001",
+    "name": "Physical Examination",
+    "durationMinutes": 45,
+    "price": 75,
+    "description": "Comprehensive physical examination by healthcare provider",
+    "whatIsIncluded": "Full body examination, blood pressure, heart rate, reflex tests",
+    "howItsDone": "In-person at clinic",
+    "specialPreparation": "Come with clean skin, wear comfortable clothing"
+  },
+  {
+    "id": "blood-work-001",
+    "name": "Blood Work & Lab Tests",
+    "durationMinutes": 15,
+    "price": 100,
+    "description": "Collection of blood samples for laboratory analysis",
+    "whatIsIncluded": "Blood draw, basic screening tests",
+    "howItsDone": "In-person at clinic lab",
+    "specialPreparation": "Fasting recommended (8 hours), bring insurance card"
+  },
+  {
+    "id": "vaccination-001",
+    "name": "Vaccination & Immunizations",
+    "durationMinutes": 20,
+    "price": 45,
+    "description": "Administration of vaccines and immunizations",
+    "whatIsIncluded": "Vaccine administration, allergy screening, health assessment",
+    "howItsDone": "In-person at clinic",
+    "specialPreparation": "Bring vaccination records, inform of allergies"
+  },
+  {
+    "id": "dermatology-001",
+    "name": "Dermatology Consultation",
+    "durationMinutes": 30,
+    "price": 70,
+    "description": "Specialized consultation for skin concerns",
+    "whatIsIncluded": "Skin examination, condition assessment, treatment recommendations",
+    "howItsDone": "In-person at clinic",
+    "specialPreparation": "Come with clean skin, no makeup or lotions"
+  },
+  {
+    "id": "telemedicine-001",
+    "name": "Telemedicine Consultation",
+    "durationMinutes": 25,
+    "price": 40,
+    "description": "Virtual consultation from home or office",
+    "whatIsIncluded": "Video consultation, medical advice, prescription if needed",
+    "howItsDone": "Remote video call",
+    "specialPreparation": "Quiet space, stable internet connection"
+  }
+]
