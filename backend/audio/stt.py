@@ -37,14 +37,23 @@ class SpeechToText:
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.language = language
         self.model = model
+        self.is_available = False
         
         if not self.api_key:
-            raise ValueError("OpenAI API key not found. Set OPENAI_API_KEY environment variable.")
+            logger.warning(
+                "⚠️  OpenAI API key not found. STT will not work.\n"
+                "To enable speech-to-text, set OPENAI_API_KEY environment variable.\n"
+                "Get it from: https://platform.openai.com/api-keys"
+            )
+            return
         
-        self.client = OpenAI(api_key=self.api_key)
-        self.async_client = AsyncOpenAI(api_key=self.api_key)
-        
-        logger.info(f"STT initialized with model: {self.model}, language: {self.language}")
+        try:
+            self.client = OpenAI(api_key=self.api_key)
+            self.async_client = AsyncOpenAI(api_key=self.api_key)
+            self.is_available = True
+            logger.info(f"✅ STT initialized with model: {self.model}, language: {self.language}")
+        except Exception as e:
+            logger.error(f"Error initializing STT: {e}")
     
     async def transcribe(self, audio_data: bytes) -> str:
         """
@@ -56,6 +65,10 @@ class SpeechToText:
         Returns:
             Transcribed text
         """
+        if not self.is_available:
+            logger.warning("STT not available - returning empty string")
+            return ""
+        
         try:
             # Convert audio data
             if isinstance(audio_data, np.ndarray):
@@ -93,6 +106,10 @@ class SpeechToText:
         Returns:
             Transcribed text
         """
+        if not self.is_available:
+            logger.warning("STT not available - returning empty string")
+            return ""
+        
         try:
             # Convert audio data
             if isinstance(audio_data, np.ndarray):
