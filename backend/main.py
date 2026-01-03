@@ -198,6 +198,7 @@ async def websocket_endpoint(websocket: WebSocket):
     logger.info("📞 New call connected")
     
     session_id = f"session-{datetime.now().timestamp()}"
+    message_count = 0
     
     try:
         # Send initial greeting
@@ -206,66 +207,88 @@ async def websocket_endpoint(websocket: WebSocket):
         
         # Convert greeting to speech
         audio_data = await tts.synthesize(greeting)
+        logger.debug(f"📤 Sending greeting audio: {len(audio_data)} bytes")
         await websocket.send_bytes(audio_data)
         
         # Main conversation loop
+        logger.info("🎧 Waiting for user audio...")
         while True:
-            # Receive audio chunk from client
-            data = await websocket.receive_bytes()
-            
-            if not data:
-                logger.warning("No audio data received")
-                continue
-            
-            # Voice Activity Detection
-            is_speech = vad.detect(data)
-            
-            if not is_speech:
-                logger.debug("Silence detected, listening...")
-                continue
-            
-            # Speech to Text (only if available)
-            if stt.is_available:
-                user_text = await stt.transcribe(data)
-            else:
-                # Fallback: if STT not available, skip transcription
-                logger.warning("STT not available, skipping speech-to-text")
-                user_text = "[audio received but not transcribed]"
-            
-            logger.info(f"👤 User: {user_text}")
-            
-            if not user_text or "[audio" in user_text:
-                continue
-            
-            # Check for end of call
-            if clinic_agent.should_end_call(user_text):
-                farewell = clinic_agent.get_farewell()
-                logger.info(f"🎤 Agent: {farewell}")
-                audio_data = await tts.synthesize(farewell)
+            try:
+                # Receive audio chunk from client
+                logger.debug("📥 Receiving from WebSocket...")
+                data = await websocket.receive_bytes()
+                
+                logger.debug(f"📊 Received audio chunk: {len(data)} bytes")
+                
+                if not data:
+                    logger.debug("⚠️  Empty audio data received")
+                    continue
+                
+                # Voice Activity Detection
+                logger.debug("🔍 Running Voice Activity Detection...")
+                is_speech = vad.detect(data)
+                logger.debug(f"🔍 VAD result: {is_speech} (speech detected: {is_speech})")
+                
+                if not is_speech:
+                    logger.debug("🔇 Silence detected, continuing to listen...")
+                    continue
+                
+                # Speech to Text (only if available)
+                logger.debug("🎤 Starting Speech-to-Text...")
+                if stt.is_available:
+                    logger.debug(f"📝 STT Provider: {stt.provider}")
+                    user_text = await stt.transcribe(data)
+                    logger.debug(f"📝 Transcription result: '{user_text}'")
+                else:
+                    logger.warning("⚠️  STT not available, skipping speech-to-text")
+                    user_text = "[audio received but not transcribed]"
+                
+                logger.info(f"👤 User: {user_text}")
+                
+                if not user_text or "[audio" in user_text.lower():
+                    logger.debug("⏭️  Skipping empty transcription, continuing to listen...")
+                    continue
+                
+                # Check for end of call
+                if clinic_agent.should_end_call(user_text):
+                    farewell = clinic_agent.get_farewell()
+                    logger.info(f"🎤 Agent: {farewell}")
+                    audio_data = await tts.synthesize(farewell)
+                    await websocket.send_bytes(audio_data)
+                    break
+                
+                # Process through AI Agent
+                logger.debug(f"🧠 Sending to agent: '{user_text}'")
+                response = clinic_agent.process_message(
+                    user_message=user_text,
+                    session_id=session_id
+                )
+                logger.info(f"🎤 Agent: {response}")
+                
+                # Text to Speech
+                logger.debug("🔊 Converting response to speech...")
+                audio_data = await tts.synthesize(response)
+                logger.debug(f"📤 Sending response audio: {len(audio_data)} bytes")
                 await websocket.send_bytes(audio_data)
-                break
-            
-            # Process through AI Agent
-            response = clinic_agent.process_message(
-                user_message=user_text,
-                session_id=session_id
-            )
-            logger.info(f"🎤 Agent: {response}")
-            
-            # Text to Speech
-            audio_data = await tts.synthesize(response)
-            await websocket.send_bytes(audio_data)
+                
+                message_count += 1
+                logger.debug(f"✅ Message #{message_count} completed")
+                
+            except Exception as e:
+                logger.error(f"❌ Error in message processing loop: {e}", exc_info=True)
+                # Continue listening despite errors
+                continue
             
     except WebSocketDisconnect:
         logger.info("📞 Call disconnected")
     except Exception as e:
-        logger.error(f"❌ WebSocket error: {e}")
+        logger.error(f"❌ WebSocket error: {e}", exc_info=True)
         try:
             await websocket.send_json({"error": str(e)})
         except:
             pass
     finally:
-        logger.info(f"📊 Call session {session_id} ended")
+        logger.info(f"📊 Call session {session_id} ended (messages processed: {message_count})")
 
 
 # Debug Endpoints (Development Only)
