@@ -1,25 +1,23 @@
 """FastAPI backend for AI Call Agent - Medical Clinic Voice Support System
-Refactored to match proven ai-medical-agent data flow
+
+Simplified architecture:
+- Frontend: Handles audio capture, VAD, transcription, TTS
+- Backend: Handles only text-based chat and AI agent processing
 """
 
 import os
 import json
 import logging
-import tempfile
 from datetime import datetime
-from typing import Optional
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from agents.clinic_agent import ClinicAgent
-from audio.stt import SpeechToText
-from audio.tts import TextToSpeech
-from audio.vad import VoiceActivityDetector
 
 # Load environment variables
 load_dotenv()
@@ -34,41 +32,19 @@ logger = logging.getLogger(__name__)
 # Session storage (in-memory for now)
 sessions = {}
 
-# Initialize components
-try:
-    stt = SpeechToText()
-    logger.info("✅ STT initialized (OpenAI Whisper)")
-except Exception as e:
-    logger.warning(f"⚠️  STT initialization failed: {e}")
-    stt = SpeechToText()
-
-try:
-    tts = TextToSpeech()
-    logger.info("✅ TTS initialized (gTTS)")
-except Exception as e:
-    logger.error(f"❌ TTS initialization failed: {e}")
-    raise
-
-try:
-    vad = VoiceActivityDetector()
-    logger.info("✅ VAD initialized")
-except Exception as e:
-    logger.error(f"❌ VAD initialization failed: {e}")
-    raise
-
 clinic_agent = None
 
 
 class ChatRequest(BaseModel):
     """Chat message request model"""
     session_id: str
-    text: str
+    message: str
 
 
 class ChatResponse(BaseModel):
     """Chat message response model"""
     session_id: str
-    assistant_response: str
+    response: str
     success: bool = True
 
 
@@ -77,27 +53,33 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle"""
     # Startup
     global clinic_agent
-    logger.info("🏥 AI Call Agent starting...")
+    logger.info("\n" + "=" * 80)
+    logger.info("🏥 AI Call Agent Backend Starting...")
+    logger.info("=" * 80)
     
     try:
         clinic_agent = ClinicAgent()
         logger.info("✅ Clinic agent initialized")
         logger.info("✅ System ready to receive calls")
+        logger.info("=" * 80 + "\n")
     except Exception as e:
         logger.error(f"❌ Failed to initialize agent: {e}")
+        logger.info("=" * 80 + "\n")
         raise
     
     yield
     
     # Shutdown
-    logger.info("🛑 AI Call Agent shutting down...")
+    logger.info("\n" + "=" * 80)
+    logger.info("🛑 AI Call Agent Backend Shutting Down...")
+    logger.info("=" * 80 + "\n")
 
 
 # Initialize FastAPI app
 app = FastAPI(
     title="AI Call Agent",
     description="Medical clinic voice support system with AI agent",
-    version="1.0.0",
+    version="2.0.0 - Client-Side Voice Processing",
     lifespan=lifespan
 )
 
@@ -112,7 +94,7 @@ app.add_middleware(
 
 
 # ============================================================================
-# Session Management Endpoints
+# Health Check
 # ============================================================================
 
 @app.get("/health")
@@ -121,13 +103,22 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "version": "1.0.0"
+        "version": "2.0.0",
+        "architecture": "Client-side voice processing"
     }
 
 
+# ============================================================================
+# Session Management
+# ============================================================================
+
 @app.get("/session/new")
 async def create_new_session():
-    """Create a new conversation session"""
+    """Create a new conversation session
+    
+    Called by frontend when user initiates a call.
+    Returns unique session_id for tracking conversation.
+    """
     print("\n" + "-" * 80)
     print("🆕 NEW SESSION REQUEST")
     print("-" * 80)
@@ -137,7 +128,7 @@ async def create_new_session():
             "created_at": datetime.now().isoformat(),
             "messages": []
         }
-        print(f"✅ Session created successfully: {session_id}")
+        print(f"✅ Session created: {session_id}")
         print(f"💾 Session stored in memory")
         print("-" * 80 + "\n")
         return {
@@ -145,138 +136,82 @@ async def create_new_session():
             "status": "created"
         }
     except Exception as e:
-        print(f"❌ Session creation error: {e}")
+        print(f"❌ Session creation failed: {e}")
         import traceback
         traceback.print_exc()
         print("-" * 80 + "\n")
-        return {
-            "error": str(e),
-            "status": "failed"
-        }
+        raise HTTPException(status_code=500, detail=f"Session error: {str(e)}")
 
 
 # ============================================================================
-# Audio Transcription Endpoint
-# ============================================================================
-
-@app.post("/api/transcribe")
-async def transcribe_audio(audio: UploadFile = File(...), session_id: str = Form(...)):
-    """Transcribe audio file to text using Speech-to-Text
-    
-    Expected flow:
-    1. Frontend captures audio as WebM blob
-    2. Sends to /api/transcribe endpoint
-    3. Backend transcribes using Google Speech Recognition
-    4. Returns transcribed text
-    5. Frontend sends text to /api/chat for AI processing
-    """
-    try:
-        print(f"\n📥 [TRANSCRIBE] Received audio for session: {session_id}")
-        
-        # Save uploaded audio to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp_file:
-            content = await audio.read()
-            tmp_file.write(content)
-            tmp_path = tmp_file.name
-        
-        print(f"📁 [TRANSCRIBE] Audio file saved: {len(content)} bytes")
-        
-        try:
-            # Transcribe using STT provider
-            print(f"🎤 [TRANSCRIBE] Starting transcription...")
-            audio_bytes = open(tmp_path, 'rb').read()
-            text = await stt.transcribe(audio_bytes)
-            
-            print(f"📝 [TRANSCRIBE] Result: '{text}'")
-            
-            if not text or text.strip() == "":
-                print("⚠️  [TRANSCRIBE] Empty transcription returned")
-                return {
-                    "session_id": session_id,
-                    "text": "",
-                    "success": False,
-                    "error": "Could not transcribe audio"
-                }
-            
-            print(f"✅ [TRANSCRIBE] Transcription successful\n")
-            
-            return {
-                "session_id": session_id,
-                "text": text,
-                "success": True
-            }
-        
-        finally:
-            # Clean up temp file
-            try:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
-                    print(f"🗑️  [TRANSCRIBE] Temp file deleted")
-            except Exception as e:
-                print(f"❌ [TRANSCRIBE] Error deleting temp file: {e}")
-    
-    except Exception as e:
-        print(f"❌ [TRANSCRIBE] Transcription error: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Transcription error: {str(e)}")
-
-
-# ============================================================================
-# Chat/AI Processing Endpoint
+# Chat/AI Processing (TEXT ONLY)
 # ============================================================================
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Process user text through AI agent and return response
+    """Process user text through AI agent and return text response
     
-    Expected flow:
-    1. Frontend receives transcribed text
-    2. Sends to /api/chat with session_id and text
-    3. Backend processes through Ollama AI agent
-    4. Returns AI response
-    5. Frontend converts response to speech (TTS)
+    Data Flow:
+    1. Frontend captures audio from microphone
+    2. Frontend detects silence (VAD) and stops recording
+    3. Frontend transcribes audio using Web Speech API
+    4. Frontend sends transcribed text to this endpoint
+    5. Backend processes text through Ollama AI agent
+    6. Backend returns response text
+    7. Frontend converts response text to speech (TTS)
+    8. Loop continues
+    
+    Args:
+        request: ChatRequest with session_id and message text
+    
+    Returns:
+        ChatResponse with response text
     """
     try:
         print("\n" + "=" * 80)
         print("💬 [CHAT] Processing user message")
         print("=" * 80)
-        print(f"👤 User: {request.text}")
+        print(f"👤 User: '{request.message}'")
         print(f"🎫 Session: {request.session_id}")
         
-        # Store message in session
-        if request.session_id in sessions:
-            sessions[request.session_id]["messages"].append({
-                "role": "user",
-                "text": request.text,
-                "timestamp": datetime.now().isoformat()
-            })
+        # Validate session
+        if request.session_id not in sessions:
+            print(f"❌ [CHAT] Session not found: {request.session_id}")
+            print("=" * 80 + "\n")
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Store user message in session
+        sessions[request.session_id]["messages"].append({
+            "role": "user",
+            "text": request.message,
+            "timestamp": datetime.now().isoformat()
+        })
         
         # Process through clinic agent
-        print(f"🧠 [CHAT] Sending to agent...")
+        print(f"\n🧠 [CHAT] Sending to AI agent...")
         response_text = clinic_agent.process_message(
-            user_message=request.text,
+            user_message=request.message,
             session_id=request.session_id
         )
         
-        print(f"🤖 [CHAT] Agent response: {response_text}")
+        # Store assistant response in session
+        sessions[request.session_id]["messages"].append({
+            "role": "assistant",
+            "text": response_text,
+            "timestamp": datetime.now().isoformat()
+        })
         
-        # Store response in session
-        if request.session_id in sessions:
-            sessions[request.session_id]["messages"].append({
-                "role": "assistant",
-                "text": response_text,
-                "timestamp": datetime.now().isoformat()
-            })
-        
+        print(f"\n🤖 [CHAT] AI Response: '{response_text}'")
         print("=" * 80 + "\n")
         
         return ChatResponse(
             session_id=request.session_id,
-            assistant_response=response_text,
+            response=response_text,
             success=True
         )
     
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"\n❌ [CHAT] Error: {e}")
         import traceback
@@ -286,7 +221,7 @@ async def chat(request: ChatRequest):
 
 
 # ============================================================================
-# Services Endpoints
+# Services Endpoint
 # ============================================================================
 
 @app.get("/api/services")
